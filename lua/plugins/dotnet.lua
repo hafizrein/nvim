@@ -195,10 +195,77 @@ return {
         -- (Note: OmniSharp still emits its DEFAULT diagnostic set without them, which is
         -- why layer 1 below is required rather than merely nice to have.)
 
-        -- ===== DIAGNOSTICS SUPPRESSED: warnings/errors never reach the editor =====
-        -- Colours are untouched: this hooks the diagnostic channel only.
+        -- ===== DIAGNOSTICS: suppressed for legacy projects only =====
+        -- The repo this was tuned against enforces TreatWarningsAsErrors plus
+        -- AnalysisLevel=latest-recommended, so OmniSharp's warning set is noise
+        -- there and the build is the source of truth. None of that reasoning
+        -- holds for SDK-style projects, where editor squiggles are wanted, so the
+        -- suppression is keyed on the project FORMAT rather than applied to every
+        -- C# buffer.
+        --
+        -- Format is read from the nearest *.csproj going up from the buffer:
+        -- SDK-style opens with `<Project Sdk="Microsoft.NET.Sdk">`, legacy carries
+        -- `ToolsVersion="12.0"` and no Sdk attribute. Cached per directory, so one
+        -- read per project rather than one per diagnostics publish.
+        --
+        -- Colours are untouched either way: this hooks the diagnostic channel.
         handlers = {
-          ["textDocument/publishDiagnostics"] = function() end,
+          ["textDocument/publishDiagnostics"] = (function()
+            local forward = vim.lsp.handlers["textDocument/publishDiagnostics"]
+            local cache = {} ---@type table<string, boolean>
+
+            ---@param bufnr integer|nil
+            ---@return boolean is_sdk_style
+            local function is_sdk(bufnr)
+              local name = vim.api.nvim_buf_get_name(bufnr or 0)
+              if name == "" then
+                return false
+              end
+              local dir = vim.fs.dirname(vim.fs.normalize(name))
+              local visited = {}
+              while dir and dir ~= "" do
+                local hit = cache[dir]
+                if hit ~= nil then
+                  return hit
+                end
+                visited[#visited + 1] = dir
+                local proj = vim.fn.glob(dir .. "/*.csproj", false, true)[1]
+                if proj then
+                  local ok, lines = pcall(vim.fn.readfile, proj, "", 40)
+                  local sdk = false
+                  if ok then
+                    for _, line in ipairs(lines) do
+                      if line:find('Sdk="', 1, true) then
+                        sdk = true
+                        break
+                      end
+                    end
+                  end
+                  for _, d in ipairs(visited) do
+                    cache[d] = sdk
+                  end
+                  return sdk
+                end
+                local parent = vim.fs.dirname(dir)
+                if parent == dir then
+                  break
+                end
+                dir = parent
+              end
+              for _, d in ipairs(visited) do
+                cache[d] = false
+              end
+              return false
+            end
+
+            return function(err, result, ctx, config)
+              -- SDK-style project: show diagnostics normally.
+              if is_sdk(ctx and ctx.bufnr) then
+                return forward(err, result, ctx, config)
+              end
+              -- legacy (or no project found): swallow, as before.
+            end
+          end)(),
         },
 
         -- ===== no semantic-token underlines (token colours come from treesitter) =====
