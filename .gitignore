@@ -1,8 +1,17 @@
-tt.*
-.tests
-doc/tags
-debug
-.repro
-foo.*
-*.log
-data
+# Lua bytecode written by vim.loader
+*.luac
+luac.out
+
+# Plugin data that lazy.nvim manages per machine
+lazy-lock.json.bak
+
+# Local editor/OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Anything machine-specific that should never be published
+.env
+*.local.lua
+*.swp
+*~

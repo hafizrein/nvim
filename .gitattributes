@@ -1,0 +1,7 @@
+# Normalize to LF in the repository; git checks out CRLF only on Windows.
+# Without this, a clone on Linux gets CRLF in .lua files and stylua --check fails.
+* text=auto eol=lf
+*.lua text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.vim text eol=lf
